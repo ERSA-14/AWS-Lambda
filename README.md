@@ -101,11 +101,10 @@ AWS-Lambda/
 │   └── run-tests.sh                  # Test execution script
 ├── .env.example                      # Environment variables template
 ├── .gitignore
-├── requirements.txt                  # Production dependencies
-├── requirements-dev.txt              # Development dependencies
+├── main.py                  
+├── requirements-dev.txt              # dependencies
 ├── pytest.ini                        # Pytest configuration
 ├── Makefile                          # Build automation
-└── README.md                         # This file
 ```
 
 ## Setup
