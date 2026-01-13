@@ -1,0 +1,183 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation template for Receipt Processing Lambda Function'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Environment name for resource naming
+
+  DynamoDBTableName:
+    Type: String
+    Default: Receipts
+    Description: Name of the DynamoDB table for storing receipts
+
+  SenderEmail:
+    Type: String
+    Description: Verified SES sender email address
+
+  RecipientEmail:
+    Type: String
+    Description: Email address to receive notifications
+
+Resources:
+  # S3 Bucket for Receipt Uploads
+  ReceiptBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'receipt-processor-${EnvironmentName}-${AWS::AccountId}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt ReceiptProcessorFunction.Arn
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: suffix
+                    Value: .jpg
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt ReceiptProcessorFunction.Arn
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: suffix
+                    Value: .png
+
+  # DynamoDB Table for Receipts
+  ReceiptsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref DynamoDBTableName
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: receipt_id
+          AttributeType: S
+        - AttributeName: date
+          AttributeType: S
+      KeySchema:
+        - AttributeName: receipt_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: date-index
+          KeySchema:
+            - AttributeName: date
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  # IAM Role for Lambda Function
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'ReceiptProcessorLambdaRole-${EnvironmentName}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ReceiptProcessorPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:HeadObject
+                Resource: !Sub '${ReceiptBucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - textract:AnalyzeExpense
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                Resource:
+                  - !GetAtt ReceiptsTable.Arn
+                  - !Sub '${ReceiptsTable.Arn}/index/*'
+              - Effect: Allow
+                Action:
+                  - ses:SendEmail
+                  - ses:SendRawEmail
+                Resource: '*'
+
+  # Lambda Function
+  ReceiptProcessorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'receipt-processor-${EnvironmentName}'
+      Runtime: python3.11
+      Handler: src.handlers.receipt_processor.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 300
+      MemorySize: 512
+      Environment:
+        Variables:
+          DYNAMODB_TABLE: !Ref DynamoDBTableName
+          SES_SENDER_EMAIL: !Ref SenderEmail
+          SES_RECIPIENT_EMAIL: !Ref RecipientEmail
+          LOG_LEVEL: INFO
+      Tags:
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  # Lambda Permission for S3
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ReceiptProcessorFunction
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !GetAtt ReceiptBucket.Arn
+
+  # CloudWatch Log Group
+  LambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/receipt-processor-${EnvironmentName}'
+      RetentionInDays: 30
+
+Outputs:
+  ReceiptBucketName:
+    Description: Name of the S3 bucket for receipt uploads
+    Value: !Ref ReceiptBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-ReceiptBucket'
+
+  LambdaFunctionArn:
+    Description: ARN of the Lambda function
+    Value: !GetAtt ReceiptProcessorFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-LambdaArn'
+
+  DynamoDBTableName:
+    Description: Name of the DynamoDB table
+    Value: !Ref ReceiptsTable
+    Export:
+      Name: !Sub '${AWS::StackName}-TableName'
