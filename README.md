@@ -262,3 +262,18 @@ response = table.query(
 )
 receipts = response.get('Items', [])
 ```
+
+
+
+## Author
+**saksham gupta**
+
+- [LinkedIn](https://www.linkedin.com/in/saksham-gupta-ersa/)
+- [GitHub](https://github.com/ERSA-14)
+- [LeetCode](https://leetcode.com/u/ERSA-14/)
+- Email: Saksham22sg@gmail.com
+- Phone: +916358798314
+
+---
+
+**Built by Saksham Gupta** • **© 2025**
