@@ -16,9 +16,6 @@ A serverless application for automated receipt processing using AWS Lambda, Text
 - [Development](#development)
 - [Monitoring](#monitoring)
 - [Cost Optimization](#cost-optimization)
-- [Troubleshooting](#troubleshooting)
-- [Contributing](#contributing)
-- [License](#license)
 
 ## Architecture
 
@@ -379,6 +376,8 @@ Set up CloudWatch Alarms for:
 2. Enable S3 Intelligent-Tiering for old receipts
 3. Configure Lambda reserved concurrency for cost predictability
 4. Use S3 lifecycle policies to archive old receipts to Glacier
+
+
 
 ## Troubleshooting
 
